@@ -59,8 +59,84 @@ pub struct Config {
     pub workspaces: Vec<Workspace>,
 }
 
+#[derive(knuffel::DecodeScalar, Debug, Default, PartialEq)]
+pub enum InputType {
+    #[default]
+    #[knuffel(skip)]
+    Any,
+
+    Keyboard,
+    Mouse,
+    Touchpad,
+    Trackpoint,
+    Trackball,
+    Tablet,
+    Touch,
+}
+
+#[derive(knuffel::Decode, Debug, Default, PartialEq)]
+pub struct InputRule {
+    // Match selectors
+    #[knuffel(argument)]
+    pub match_type: InputType,
+    #[knuffel(property(name = "name"))]
+    pub match_name: Option<String>,
+    #[knuffel(property(name = "product"))]
+    pub match_product: Option<u32>,
+    #[knuffel(property(name = "vendor"))]
+    pub match_vendor: Option<u32>,
+
+    // Device configuration
+
+    // Keyboard stuff
+    #[knuffel(child, default)]
+    pub xkb: Xkb,
+    // The defaults were chosen to match wlroots and sway.
+    #[knuffel(child, unwrap(argument), default)]
+    pub repeat_delay: u16,
+    #[knuffel(child, unwrap(argument), default)]
+    pub repeat_rate: u8,
+    #[knuffel(child, unwrap(argument), default)]
+    pub track_layout: TrackLayout,
+
+    // Pointer stuff
+    #[knuffel(child)]
+    pub off: bool,
+    #[knuffel(child)]
+    pub natural_scroll: bool,
+    #[knuffel(child, unwrap(argument), default)]
+    pub accel_speed: f64,
+    #[knuffel(child, unwrap(argument, str))]
+    pub accel_profile: Option<AccelProfile>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub scroll_method: Option<ScrollMethod>,
+    #[knuffel(child)]
+    pub left_handed: bool,
+    #[knuffel(child)]
+    pub middle_emulation: bool,
+    #[knuffel(child)]
+    pub disabled_on_external_mouse: bool,
+
+    #[knuffel(child)]
+    pub tap: bool,
+    #[knuffel(child)]
+    pub dwt: bool,
+    #[knuffel(child)]
+    pub dwtp: bool,
+    #[knuffel(child, unwrap(argument, str))]
+    pub click_method: Option<ClickMethod>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub tap_button_map: Option<TapButtonMap>,
+
+    #[knuffel(child, unwrap(argument))]
+    pub map_to_output: Option<String>,
+}
+
 #[derive(knuffel::Decode, Debug, Default, PartialEq)]
 pub struct Input {
+    #[knuffel(children(name = "match"))]
+    pub matches: Vec<InputRule>,
+
     #[knuffel(child, default)]
     pub keyboard: Keyboard,
     #[knuffel(child, default)]
@@ -2884,7 +2960,7 @@ mod tests {
         check(
             r##"
             input {
-                keyboard {
+                match "keyboard" {
                     repeat-delay 600
                     repeat-rate 25
                     track-layout "window"
@@ -2894,7 +2970,14 @@ mod tests {
                     }
                 }
 
-                touchpad {
+                match "keyboard" name="Kinesis Advantage2" {
+                    xkb {
+                        variant "hyper"
+                        options "caps:hyper"
+                    }
+                }
+
+                match "touchpad" {
                     tap
                     dwt
                     dwtp
@@ -2906,7 +2989,7 @@ mod tests {
                     disabled-on-external-mouse
                 }
 
-                mouse {
+                match "mouse" {
                     natural-scroll
                     accel-speed 0.4
                     accel-profile "flat"
@@ -2914,7 +2997,7 @@ mod tests {
                     middle-emulation
                 }
 
-                trackpoint {
+                match "trackpoint" {
                     off
                     natural-scroll
                     accel-speed 0.0
@@ -2922,7 +3005,7 @@ mod tests {
                     scroll-method "on-button-down"
                 }
 
-                trackball {
+                match "trackball" {
                     off
                     natural-scroll
                     accel-speed 0.0
@@ -2931,11 +3014,11 @@ mod tests {
                     middle-emulation
                 }
 
-                tablet {
+                match "tablet" {
                     map-to-output "eDP-1"
                 }
 
-                touch {
+                match "touch" {
                     map-to-output "eDP-1"
                 }
 
@@ -3076,70 +3159,105 @@ mod tests {
             "##,
             Config {
                 input: Input {
-                    keyboard: Keyboard {
-                        xkb: Xkb {
-                            layout: "us,ru".to_owned(),
-                            options: Some("grp:win_space_toggle".to_owned()),
+                    matches: vec![
+                        InputRule {
+                            match_type: InputType::Keyboard,
+                            xkb: Xkb {
+                                layout: "us,ru".to_owned(),
+                                options: Some("grp:win_space_toggle".to_owned()),
+                                ..Default::default()
+                            },
+                            repeat_delay: 600,
+                            repeat_rate: 25,
+                            track_layout: TrackLayout::Window,
                             ..Default::default()
                         },
-                        repeat_delay: 600,
-                        repeat_rate: 25,
-                        track_layout: TrackLayout::Window,
-                    },
-                    touchpad: Touchpad {
-                        off: false,
-                        tap: true,
-                        dwt: true,
-                        dwtp: true,
-                        click_method: Some(ClickMethod::Clickfinger),
-                        natural_scroll: false,
-                        accel_speed: 0.2,
-                        accel_profile: Some(AccelProfile::Flat),
-                        scroll_method: Some(ScrollMethod::TwoFinger),
-                        tap_button_map: Some(TapButtonMap::LeftMiddleRight),
-                        left_handed: false,
-                        disabled_on_external_mouse: true,
-                        middle_emulation: false,
-                    },
-                    mouse: Mouse {
-                        off: false,
-                        natural_scroll: true,
-                        accel_speed: 0.4,
-                        accel_profile: Some(AccelProfile::Flat),
-                        scroll_method: Some(ScrollMethod::NoScroll),
-                        left_handed: false,
-                        middle_emulation: true,
-                    },
-                    trackpoint: Trackpoint {
-                        off: true,
-                        natural_scroll: true,
-                        accel_speed: 0.0,
-                        accel_profile: Some(AccelProfile::Flat),
-                        scroll_method: Some(ScrollMethod::OnButtonDown),
-                        middle_emulation: false,
-                    },
-                    trackball: Trackball {
-                        off: true,
-                        natural_scroll: true,
-                        accel_speed: 0.0,
-                        accel_profile: Some(AccelProfile::Flat),
-                        left_handed: true,
-                        middle_emulation: true,
-                    },
-                    tablet: Tablet {
-                        off: false,
-                        map_to_output: Some("eDP-1".to_owned()),
-                        left_handed: false,
-                    },
-                    touch: Touch {
-                        map_to_output: Some("eDP-1".to_owned()),
-                    },
+                        InputRule {
+                            match_type: InputType::Keyboard,
+                            match_name: Some("Kinesis Advantage2".into()),
+                            xkb: Xkb {
+                                variant: "hyper".to_owned(),
+                                options: Some("caps:hyper".to_owned()),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Touchpad,
+                            off: false,
+                            tap: true,
+                            dwt: true,
+                            dwtp: true,
+                            click_method: Some(ClickMethod::Clickfinger),
+                            natural_scroll: false,
+                            accel_speed: 0.2,
+                            accel_profile: Some(AccelProfile::Flat),
+                            scroll_method: Some(ScrollMethod::TwoFinger),
+                            tap_button_map: Some(TapButtonMap::LeftMiddleRight),
+                            left_handed: false,
+                            disabled_on_external_mouse: true,
+                            middle_emulation: false,
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Mouse,
+                            off: false,
+                            natural_scroll: true,
+                            accel_speed: 0.4,
+                            accel_profile: Some(AccelProfile::Flat),
+                            scroll_method: Some(ScrollMethod::NoScroll),
+                            left_handed: false,
+                            middle_emulation: true,
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Trackpoint,
+                            off: true,
+                            natural_scroll: true,
+                            accel_speed: 0.0,
+                            accel_profile: Some(AccelProfile::Flat),
+                            scroll_method: Some(ScrollMethod::OnButtonDown),
+                            middle_emulation: false,
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Trackball,
+                            off: true,
+                            natural_scroll: true,
+                            accel_speed: 0.0,
+                            accel_profile: Some(AccelProfile::Flat),
+                            left_handed: true,
+                            middle_emulation: true,
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Tablet,
+                            off: false,
+                            map_to_output: Some("eDP-1".to_owned()),
+                            left_handed: false,
+                            ..Default::default()
+                        },
+                        InputRule {
+                            match_type: InputType::Touch,
+                            map_to_output: Some("eDP-1".to_owned()),
+                            ..Default::default()
+                        },
+                    ],
                     disable_power_key_handling: true,
                     warp_mouse_to_focus: true,
                     focus_follows_mouse: Some(FocusFollowsMouse {
                         max_scroll_amount: None,
                     }),
                     workspace_auto_back_and_forth: true,
+
+                    // TODO: remove old fields
+                    keyboard: Default::default(),
+                    mouse: Default::default(),
+                    tablet: Default::default(),
+                    touchpad: Default::default(),
+                    trackpoint: Default::default(),
+                    trackball: Default::default(),
+                    touch: Default::default(),
                 },
                 outputs: Outputs(vec![Output {
                     off: false,
